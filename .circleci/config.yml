@@ -1,0 +1,54 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/openjdk:8-jdk
+    working_directory: ~/project
+
+    steps:
+      - checkout
+      - setup_remote_docker
+
+      - run:
+          name: Build prerequisites
+          command: |
+            sudo apt-get update && sudo apt-get upgrade -y
+            sudo apt-get install -y make docker git curl
+            docker --version
+            docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" quay.io
+      - restore_cache:
+          key: sbt-cache-{{ checksum "build.sbt" }}
+          paths:
+            - "~/.ivy2"
+            - "~/.coursier"
+            - "~/.sbt"
+            - "~/.sbt-launch.jar"
+      - run:
+          name: Build Dependencies
+          command: make download-deps
+      - save_cache:
+          key: sbt-cache-{{ checksum "build.sbt" }}
+          paths:
+            - "~/.ivy2"
+            - "~/.coursier"
+            - "~/.sbt"
+            - "~/.sbt-launch.jar"
+      - run:
+          name: Build service
+          command: make build
+
+      - deploy:
+          name: Deploy
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "develop" ];
+              then : ;# make install tag-develop deploy-dev;
+            elif [ "${CIRCLE_BRANCH}" == "master" ];
+              then : ;# make install tag-master tag-semver deploy-staging;
+            fi;
+
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - build:
+          context: babylon
